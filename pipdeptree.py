@@ -142,17 +142,17 @@ class Package(object):
         self.project_name = obj.project_name
         self.key = obj.key
 
-    def render_as_root(self, frozen):
+    def render_as_root(self, frozen, license):
         return NotImplementedError
 
-    def render_as_branch(self, frozen):
+    def render_as_branch(self, frozen, license):
         return NotImplementedError
 
-    def render(self, parent=None, frozen=False):
+    def render(self, parent=None, frozen=False, license=False):
         if not parent:
-            return self.render_as_root(frozen)
+            return self.render_as_root(frozen, license)
         else:
-            return self.render_as_branch(frozen)
+            return self.render_as_branch(frozen, license)
 
     @staticmethod
     def frozen_repr(obj):
@@ -180,13 +180,19 @@ class DistPackage(Package):
         self.version_spec = None
         self.req = req
 
-    def render_as_root(self, frozen):
+    def render_as_root(self, frozen, license):
         if not frozen:
-            return '{0}=={1}'.format(self.project_name, self.version)
+            license_str=""
+            if license and hasattr(self, "license"):                
+                license_str=" {}".format(self.license)
+            return '{0}=={1}{2}'.format(
+                self.project_name,
+                self.version,
+                license_str)
         else:
             return self.__class__.frozen_repr(self._obj)
 
-    def render_as_branch(self, frozen):
+    def render_as_branch(self, frozen, license):
         assert self.req is not None
         if not frozen:
             parent_ver_spec = self.req.version_spec
@@ -256,22 +262,35 @@ class ReqPackage(Package):
         req_obj = pkg_resources.Requirement.parse(req_version_str)
         return self.installed_version not in req_obj
 
-    def render_as_root(self, frozen):
+    def render_as_root(self, frozen, license):
         if not frozen:
-            return '{0}=={1}'.format(self.project_name, self.installed_version)
+            license_str=""
+            if license:
+                license_str=" {}".format(self.license)
+            return '{0}=={1}{2}'.format(
+                self.project_name,
+                self.installed_version,
+                license_str)
         elif self.dist:
             return self.__class__.frozen_repr(self.dist._obj)
         else:
             return self.project_name
 
-    def render_as_branch(self, frozen):
+    def render_as_branch(self, frozen, license):
         if not frozen:
             req_ver = self.version_spec if self.version_spec else 'Any'
+            license_str=""
+            if license:
+                license_str=" {}".format(self.license)
             return (
-                '{0} [required: {1}, installed: {2}]'
-                ).format(self.project_name, req_ver, self.installed_version)
+                '{0} [required: {1}, installed: {2}]{3}'
+                ).format(
+                    self.project_name,
+                    req_ver,
+                    self.installed_version,
+                    license_str)
         else:
-            return self.render_as_root(frozen)
+            return self.render_as_root(frozen, license)
 
     def as_dict(self):
         return {'key': self.key,
@@ -280,7 +299,8 @@ class ReqPackage(Package):
                 'required_version': self.version_spec}
 
 
-def render_tree(tree, list_all=True, show_only=None, frozen=False, exclude=None):
+def render_tree(tree, list_all=True, show_only=None,
+    frozen=False, exclude=None, license=False):
     """Convert tree to string representation
 
     :param dict tree: the package tree
@@ -293,6 +313,7 @@ def render_tree(tree, list_all=True, show_only=None, frozen=False, exclude=None)
                         the output that's favourable to pip --freeze
     :param set exclude: set of select packages to be excluded from the
                           output. This is optional arg, default: None.
+    :param bool license: whether or not show the licenses of the pkgs
     :returns: string representation of the tree
     :rtype: str
 
@@ -316,7 +337,7 @@ def render_tree(tree, list_all=True, show_only=None, frozen=False, exclude=None)
             return []
         if chain is None:
             chain = [node.project_name]
-        node_str = node.render(parent, frozen)
+        node_str = node.render(parent, frozen=frozen, license=license)
         if parent:
             prefix = ' '*indent + ('- ' if use_bullets else '')
             node_str = prefix + node_str
@@ -554,6 +575,10 @@ def get_parser():
                             'format. Available are all formats supported by '
                             'GraphViz, e.g.: dot, jpeg, pdf, png, svg'
                         ))
+    parser.add_argument('--license', action='store_true', default=False,
+                        help=(
+                            'Display licenses information in the dependencies tree'
+                        ))
     return parser
 
 
@@ -591,10 +616,10 @@ def main():
             print('Warning!!! Possibly conflicting dependencies found:',
                   file=sys.stderr)
             for p, reqs in conflicting.items():
-                pkg = p.render_as_root(False)
+                pkg = p.render_as_root(frozen=False, license=False)
                 print('* {}'.format(pkg), file=sys.stderr)
                 for req in reqs:
-                    req_str = req.render_as_branch(False)
+                    req_str = req.render_as_branch(frozen=False, license=False)
                     print(' - {}'.format(req_str), file=sys.stderr)
             print('-'*72, file=sys.stderr)
 
@@ -620,7 +645,8 @@ def main():
 
     tree = render_tree(tree if not args.reverse else reverse_tree(tree),
                        list_all=args.all, show_only=show_only,
-                       frozen=args.freeze, exclude=exclude)
+                       frozen=args.freeze, exclude=exclude,
+                       license=args.license)
     print(tree)
     return return_code
 

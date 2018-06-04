@@ -68,7 +68,7 @@ def test_DistPackage_render_as_root():
     alembic = find_dist('alembic')
     assert alembic.version == '0.6.2'
     assert alembic.project_name == 'alembic'
-    assert alembic.render_as_root(frozen=False) == 'alembic==0.6.2'
+    assert alembic.render_as_root(frozen=False, license=False) == 'alembic==0.6.2'
 
 
 def test_DistPackage_render_as_branch():
@@ -79,8 +79,8 @@ def test_DistPackage_render_as_branch():
     assert sqlalchemy.project_name == 'SQLAlchemy'
     assert sqlalchemy.version_spec == '>=0.7.3'
     assert sqlalchemy.installed_version == '0.9.1'
-    result_1 = alembic.render_as_branch(False)
-    result_2 = alembic.render_as_branch(False)
+    result_1 = alembic.render_as_branch(frozen=False, license=False)
+    result_2 = alembic.render_as_branch(frozen=False, license=False)
     assert result_1 == result_2 == 'alembic==0.6.2 [requires: SQLAlchemy>=0.7.3]'
 
 
@@ -88,7 +88,7 @@ def test_ReqPackage_render_as_root():
     flask = find_req('flask', 'flask-script')
     assert flask.project_name == 'Flask'
     assert flask.installed_version == '0.10.1'
-    assert flask.render_as_root(frozen=False) == 'Flask==0.10.1'
+    assert flask.render_as_root(frozen=False, license=False) == 'Flask==0.10.1'
 
 
 def test_ReqPackage_render_as_branch():
@@ -96,14 +96,14 @@ def test_ReqPackage_render_as_branch():
     assert mks1.project_name == 'markupsafe'
     assert mks1.installed_version == '0.18'
     assert mks1.version_spec is None
-    assert mks1.render_as_branch(False) == 'markupsafe [required: Any, installed: 0.18]'
-    assert mks1.render_as_branch(True) == 'MarkupSafe==0.18'
+    assert mks1.render_as_branch(frozen=False, license=False) == 'markupsafe [required: Any, installed: 0.18]'
+    assert mks1.render_as_branch(frozen=True, license=False) == 'MarkupSafe==0.18'
     mks2 = find_req('markupsafe', 'mako')
     assert mks2.project_name == 'MarkupSafe'
     assert mks2.installed_version == '0.18'
     assert mks2.version_spec == '>=0.9.2'
-    assert mks2.render_as_branch(False) == 'MarkupSafe [required: >=0.9.2, installed: 0.18]'
-    assert mks2.render_as_branch(True) == 'MarkupSafe==0.18'
+    assert mks2.render_as_branch(frozen=False, license=False) == 'MarkupSafe [required: >=0.9.2, installed: 0.18]'
+    assert mks2.render_as_branch(frozen=True, license=False) == 'MarkupSafe==0.18'
 
 
 def test_render_tree_only_top():
