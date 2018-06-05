@@ -1,12 +1,18 @@
 from __future__ import print_function
+
+import argparse
+import functools
+import json
 import os
 import sys
-from itertools import chain
 from collections import defaultdict
-import argparse
-from operator import attrgetter
-import json
+from email import message_from_string
+from email.parser import FeedParser
 from importlib import import_module
+from itertools import chain
+from operator import attrgetter
+
+import pkg_resources
 
 try:
     from collections import OrderedDict
@@ -19,7 +25,6 @@ try:
 except ImportError:
     from pip import get_installed_distributions, FrozenRequirement
 
-import pkg_resources
 # inline:
 # from graphviz import backend, Digraph
 
@@ -29,16 +34,86 @@ __version__ = '0.12.1'
 
 flatten = chain.from_iterable
 
+METADATA_KEYS = (
+    'home-page',
+    'author',
+    'license',
+)
 
-def build_dist_index(pkgs):
+LICENSE_UNKNOWN = 'UNKNOWN'
+
+
+def get_pkg_license(pkg):
+    pkg_license = None
+    metadata = None
+    if pkg.has_metadata('METADATA'):
+        metadata = pkg.get_metadata('METADATA')
+
+    if pkg.has_metadata('PKG-INFO') and metadata is None:
+        metadata = pkg.get_metadata('PKG-INFO')
+
+    if metadata is None:
+        return None
+
+    feed_parser = FeedParser()
+    feed_parser.feed(metadata)
+    parsed_metadata = feed_parser.close()
+
+    pkg_info = {}
+    for key in METADATA_KEYS:
+        pkg_info[key] = parsed_metadata.get(key, LICENSE_UNKNOWN)
+    pkg_license = pkg_info.get('license')
+
+    if metadata is not None \
+        and pkg_license is not None \
+        and pkg_license is not LICENSE_UNKNOWN:
+        message = message_from_string(metadata)
+        pkg_license = find_license_from_classifier(message)
+
+    return pkg_license
+
+
+def find_license_from_classifier(message):
+    license_from_classifier = LICENSE_UNKNOWN
+
+    licenses = []
+    for k, v in message.items():
+        if k == 'Classifier' and v.startswith('License'):
+            licenses.append(v.split(' :: ')[-1])
+
+    if len(licenses) > 0:
+        license_from_classifier = ', '.join(licenses)
+
+    return license_from_classifier
+
+
+
+
+def prepare_package(pkg, compute_license):
+    """Prepare package metadata.
+
+    :param pkg: the package to prepare
+    :param bool compute_license: if we have to add license information
+    :returns: the pkg updated
+    """
+    if compute_license:
+        pkg.license = get_pkg_license(pkg)
+        print("lib: {name:30}license:\t\t{lic}".format(lic=pkg.license, name=pkg.project_name))
+
+    return pkg
+
+
+def build_dist_index(pkgs, compute_license):
     """Build an index pkgs by their key as a dict.
 
     :param list pkgs: list of pkg_resources.Distribution instances
+    :param bool compute_license: if we have to comute license informations
     :returns: index of the pkgs by the pkg key
     :rtype: dict
 
     """
-    return dict((p.key, DistPackage(p)) for p in pkgs)
+    pkgs_prep = (prepare_package(p, compute_license) for p in pkgs)
+    return dict((p.key, DistPackage(p)) for p in pkgs_prep)
 
 
 def construct_tree(index):
@@ -592,7 +667,7 @@ def main():
     pkgs = get_installed_distributions(local_only=args.local_only,
                                            user_only=args.user_only)
 
-    dist_index = build_dist_index(pkgs)
+    dist_index = build_dist_index(pkgs, args.license)
     tree = construct_tree(dist_index)
 
     if args.json:
